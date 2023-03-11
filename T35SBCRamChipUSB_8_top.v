@@ -1,9 +1,11 @@
 /************************************************************************
-*   FILE:  T35SBCRamChipUSB_8_top.v    Version 0.2      Jan.20, 2023    *
+*   FILE:  T35SBCRamChipUSB_8_top.v    Version 0.3      Jan.20, 2023    *
 *                                                                       *
 *	This project adds USB Console support, selected by IOswitch bit 0	*
 *   TFOX, N4TLF September 19, 2022   You are free to use it             *
 *       however you like.  No warranty expressed or implied             *
+*   3/11/23 TFOX  Fixed cpuDimux.v support for nop on reset and         *
+*       generic S100 I/O boards.  Also, SBC buffers properly driven     *
 ************************************************************************/
 
 
@@ -226,7 +228,7 @@ module  T35SBCRamChipUSB_8_top(
     wire    inPortCON_cs;
     wire    rom_cs;
     wire    ram_cs;
-    wire    nop_cs;
+    wire    nop_n_cs;
     wire    miscCtl_cs;
     wire    inBarLED_cs;
     wire    outBarLED_cs;
@@ -446,7 +448,7 @@ assign boardActive = !pll0_LOCKED;   // LED is LOW to turn ON
 //////////////////////////////////////////////////////////////////////////////
 assign debugReg[0] = !ram_cs;
 assign debugReg[1] = !n_reset;          //z80_n_rd;
-assign debugReg[2] = !nop_cs;           //z80_n_mreq;
+assign debugReg[2] = !nop_n_cs;           //z80_n_mreq;
 assign debugReg[3] = !rom_cs;
 assign debugReg[4] = s100_pDBIN;
 assign debugReg[5] = s100_sMEMR;
@@ -501,10 +503,11 @@ cpuHAdrMux  HighAdrMux(
     .pll0_250MHz    (pll0_250MHz),
     .HighAdr        (buildAddress[15:8]));    // Send modified A15-08 to BUILD Address
         
- /************************************************************************************
+/************************************************************************************
 *   CPU Data INPUT Multiplexer      Note: Efinix FPGAs do NOT have tristate ability *
 ************************************************************************************/
 cpuDIMux    cpuInMux (
+    .z80Read        (!z80_n_rd), 
     .romData        (romOut[7:0]),
     .s100DataIn     (s100_DI[7:0]),
     .ramaData       (biData_IN[7:0]),
@@ -512,7 +515,7 @@ cpuDIMux    cpuInMux (
     .iobyte         (sw_IOBYTE[7:0]),    
     .usbStatus      (usbStat[7:0]),
     .usbRxD         (usbRxData[7:0]),
-    .reset_cs       (nop_cs),
+    .reset_cs       (!nop_n_cs),
     .rom_cs         (rom_cs),
     .inPortcon_cs   (inPortCON_cs),
     .ram_cs         (ram_cs),
@@ -533,7 +536,7 @@ memAdrDecoder  mem_cs(
     .address        (buildAddress[15:12]),  // change to [15:9] for small ROM (prj 6)
     .memwrite       (memWR),
     .memread        (memRD),
-    .reset_cs       (nop_cs),
+    .reset_cs       (nop_n_cs),
     .rom_cs         (rom_cs),
     .ram_cs         (ram_cs)
      );
@@ -778,14 +781,15 @@ dff3     ctlDisableLatch(       //was dff
         );
 
 /********************************************************************************
-*   S100 HOLD IN (busreq) Latch FF  Driven from S100 HOLD pin                   *
+*   Jump To ROM F0.  output (nop_n_cs) goes LOW upon reset, enabling NOPs to    *
+*       CPU Data IN until rom address (F000) is reached, then it goes high      *
 ********************************************************************************/        
 dff3    jumptoRom(
         .clk        (n_reset),
         .pst_n      (!rom_cs),
         .clr_n      (1'b1),     
         .din        (1'b0),
-        .q          (nop_cs));
+        .q          (nop_n_cs));
 
         
 /********************************************************************************

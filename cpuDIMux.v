@@ -1,5 +1,5 @@
 /********************************************************************
-*   FILE:   cpuDIMux.v      Ver 0.1         Oct. 12, 2022           *
+*   FILE:   cpuDIMux.v      Ver 0.3         Oct. 12, 2022           *
 *                                                                   *
 *   This function selects which device's DATA OUT goes into the Z80 *
 *   CPU DATA INPUT bus at any given time. It uses the device's      *
@@ -7,6 +7,8 @@
 *   The Efinix FPGAs do NOT have internal tri-state buffering       *
 *   capabilities, so this is especially important to prevent        *
 *   clashing of signals of the Z80 DATA INPUT bus.                  *
+*   3/11/23  TFOX  Modified to fix nop on reset, add generic S100   *
+*       I/O boards, and remove intermediary selectedData register   *
 ********************************************************************/
 
 module cpuDIMux
@@ -26,31 +28,30 @@ module cpuDIMux
     input   iobyteIn_cs,
     input   usbStat_cs,
     input   usbRxD_cs,
+    input   z80Read,
     input   pll0_250MHz,
-    output wire [7:0] outData
+    output reg [7:0] outData
     );
-    
-reg [7:0] selectedData;
 
 always @(posedge pll0_250MHz) begin
     if (rom_cs)
-        selectedData <= romData;
+        outData <= romData;
     else if(inPortcon_cs)
-        selectedData <= s100DataIn;
+        outData <= s100DataIn;
     else if (ram_cs)
-        selectedData <= ramaData;
+        outData <= ramaData;
     else if (inLED_cs)
-        selectedData <= ledread;
+        outData <= ledread;
     else if (iobyteIn_cs)
-        selectedData <= iobyte;
+        outData <= iobyte;
      else if (usbRxD_cs)
-        selectedData <= usbRxD;
+        outData <= usbRxD;
      else if(usbStat_cs)
-        selectedData <= usbStatus;
+        outData <= usbStatus;
    else if (reset_cs)
-        selectedData <= 8'h00;   // execute a NOP for now
+        outData <= 8'h00;
+    else if (z80Read)
+        outData <= s100DataIn;
      end
-    
-    assign outData = selectedData;
     
 endmodule
